@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from analyze.translator import TranslatorBaidu
 
+train_path = "E:/DATA/multimodal/multimodal_train/train.tsv"
 train_sampleset_path = "E:/DATA/multimodal/multimodal_train_sampleset/train.sample.tsv"
 
 testA_path = "E:/DATA/multimodal/multimodal_testA/testA.tsv"
@@ -40,6 +41,9 @@ def change_cv2_draw(image, labels_names, boxes, sizes=16, color=(255, 0, 0)):
 if __name__ == '__main__':
     # train_sampleset = read_tsv(train_sampleset_path)
 
+    train_datas = pd.read_csv(train_path, sep="\t", iterator=True)
+    # head = train_datas.get_chunk(100000)
+    count = [1 for i in train_datas.get_chunk(100000)]
     # train_sampleset = pd.read_csv(train_sampleset_path, sep="\t")
     testA = pd.read_csv(testA_path, sep="\t")
 
