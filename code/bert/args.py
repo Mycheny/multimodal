@@ -1,5 +1,6 @@
 import os
 import tensorflow as tf
+from config import BERT_PRE_MODEL_PATH, USER_TMP_DATA_PATH
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -11,7 +12,6 @@ config_name = os.path.join(model_dir, 'bert_config.json')
 ckpt_name = os.path.join(model_dir, 'bert_model.ckpt')
 output_dir = os.path.join(model_dir, '../temp')
 vocab_file = os.path.join(model_dir, 'vocab.txt')
-data_dir = os.path.join(model_dir, '../data/LCQMC/processed')
 
 num_train_epochs = 35
 batch_size = 64
@@ -27,5 +27,4 @@ layer_indexes = [-2]
 max_seq_len = None
 
 # pb名字
-pb_file = 'bert.pb'
-text_match_pb_file = 'text_match.pb'
+pb_file = os.path.join(USER_TMP_DATA_PATH, 'bert.pb')
