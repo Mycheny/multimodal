@@ -27,8 +27,9 @@ if system=="Liunx":
     TEST_B_PATH = os.path.join(DATA_PATH, 'testB', f"testB.tsv")
 else:
     DATA_PATH = "E:\\DATA\\multimodal"
-    TRAIN_PATH = os.path.join(DATA_PATH, 'multimodal_train', f"train.tsv")
-    VALID_PATH = os.path.join(DATA_PATH, 'multimodal_valid', f"valid.tsv")
-    VALID_ANSWER_PATH = os.path.join(DATA_PATH, 'multimodal_valid', f"valid_answer.json")
-    TEST_A_PATH = os.path.join(DATA_PATH, 'multimodal_testA', f"testA.tsv")
-    TEST_B_PATH = os.path.join(DATA_PATH, 'multimodal_testB', f"testB.tsv")
+    TRAIN_PATH = os.path.join(DATA_PATH, 'multimodal_train', "train.tsv")
+    VALID_PATH = os.path.join(DATA_PATH, 'multimodal_valid', "valid.tsv")
+    VALID_ANSWER_PATH = os.path.join(DATA_PATH, 'multimodal_valid', "valid_answer.json")
+    TEST_A_PATH = os.path.join(DATA_PATH, 'multimodal_testA', "testA.tsv")
+    TEST_B_PATH = os.path.join(DATA_PATH, 'multimodal_testB', "testB.tsv")
+    LABELS_NAMES_PATH = os.path.join(DATA_PATH, 'multimodal_labels.txt')
