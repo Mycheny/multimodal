@@ -19,6 +19,7 @@ class BatchNorm(KL.BatchNormalization):
     so this layer is often frozen (via setting in Config class) and functions
     as linear layer.
     """
+
     def call(self, inputs, training=None):
         """
         Note about training values:
@@ -33,22 +34,113 @@ class Model(Triplet):
 
     def __init__(self):
         super().__init__()
+        box_num = None
+        self.margin = 0.5
         self.input_query_vector = tf.placeholder(tf.float32, (None, 768))  # shape (batch, 768)
 
-        self.input_feature_vector = tf.placeholder(tf.float32, (None, None, 2048))  # shape (batch, boxe_num, 2048)
-        self.input_boxe_vector = tf.placeholder(tf.float32, (None, None, 3))  # shape (batch, boxe_num, (x, y, area_than)
-        self.input_label_vector = tf.placeholder(tf.float32, (None, None, 768))  # shape (batch, boxe_num, 768)
+        self.input_feature_vector = tf.placeholder(tf.float32, (None, box_num, 2048))  # shape (batch, boxe_num, 2048)
+        self.input_boxe_vector = tf.placeholder(tf.float32,
+                                                (None, box_num, 3))  # shape (batch, boxe_num, (x, y, area_than)
+        self.input_label_vector = tf.placeholder(tf.float32, (None, box_num, 768))  # shape (batch, boxe_num, 768)
+
+        self.input_labels = tf.placeholder(tf.int32, (None))  # shape (batch*2)
         self.build()
 
     def build(self):
-        x = KL.Conv2D(128, (3, 3), padding="valid")(tf.zeros((32, 28, 28, 3), dtype=tf.float32))
-        dim = 128
-        batch = 5
-        labels = np.random.randint(0, 5, (batch,))
-        embeddings = (np.round(np.random.random((batch, dim)), 1)).astype(np.float32)
-        margin = 0.5
-        all_triplet_loss = self.batch_all_triplet_loss(labels, embeddings, margin)
-        hard_triplet_loss = self.batch_hard_triplet_loss(labels, embeddings, margin)
+        self.image_feature = self.build_image_feature()
+        self.query_feature = self.build_query_feature()
+        self.embeddings = tf.concat((self.query_feature, self.image_feature), axis=0)
+        self.all_triplet_loss = self.batch_all_triplet_loss(self.input_labels, self.embeddings, self.margin)
+        self.hard_triplet_loss = self.batch_hard_triplet_loss(self.input_labels, self.embeddings, self.margin)
+
+    def build_image_feature(self):
+        with tf.variable_scope(None, "box_label_weight"):
+            filters_kernel_size = [[128, 3], [256, 3], [128, 2], [256, 2]]
+            layers = []
+            for f, k in filters_kernel_size:
+                x = KL.Conv1D(f, k, padding="same")(self.input_boxe_vector)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                layers.append(x)
+            layers = tf.concat(layers, axis=-1)
+            layers = KL.Conv1D(256, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(256, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(128, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1, 3, padding="same")(layers)
+            box_label_weight = tf.nn.tanh(layers)
+
+        with tf.variable_scope(None, "box_feature"):
+            filters_kernel_size = [[1024, 3], [2048, 3], [1024, 2], [2048, 2]]
+            layers = []
+            for f, k in filters_kernel_size:
+                x = KL.Conv1D(f, k, padding="same")(self.input_feature_vector)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                layers.append(x)
+            layers = tf.concat(layers, axis=-1)
+            layers = KL.Conv1D(2048, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(2048, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1024, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(768, 3, padding="same")(layers)
+            layers = box_label_weight * layers
+            layers = [tf.reduce_mean(layers, axis=1, keepdims=True), tf.reduce_sum(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True)]
+            layers = tf.concat(layers, axis=1)
+            layers = tf.transpose(layers, perm=[0, 2, 1])
+            filters_kernel_size = [[2, 5], [2, 3], [1, 5], [1, 3]]
+            layers2 = []
+            for f, k in filters_kernel_size:
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(layers)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                layers2.append(x)
+            layers = tf.concat(layers2, axis=-1)
+            layers = KL.Conv1D(3, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1, 3, padding="same")(layers)
+            box_feature = tf.reshape(layers, (-1, 768))
+
+        with tf.variable_scope(None, "label_feature"):
+            filters_kernel_size = [[1024, 3], [512, 3], [1024, 2], [512, 2]]
+            layers = []
+            for f, k in filters_kernel_size:
+                x = KL.Conv1D(f, k, padding="same")(self.input_label_vector)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                layers.append(x)
+            layers = tf.concat(layers, axis=-1)
+            layers = KL.Conv1D(2048, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(2048, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1024, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(768, 3, padding="same")(layers)
+            layers = box_label_weight * layers
+            layers = [tf.reduce_mean(layers, axis=1, keepdims=True), tf.reduce_sum(layers, axis=1, keepdims=True),
+                      tf.reduce_max(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True)]
+            layers = tf.concat(layers, axis=1)
+            layers = tf.transpose(layers, perm=[0, 2, 1])
+            filters_kernel_size = [[2, 5], [2, 3], [1, 5], [1, 3]]
+            layers2 = []
+            for f, k in filters_kernel_size:
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(layers)
+                x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
+                layers2.append(x)
+            layers = tf.concat(layers2, axis=-1)
+            layers = KL.Conv1D(3, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1, 3, padding="same", activation=K.relu)(layers)
+            layers = KL.Conv1D(1, 3, padding="same")(layers)
+            label_feature = tf.reshape(layers, (-1, 768))
+
+        with tf.variable_scope(None, "feature_merge"):
+            layers = tf.concat((label_feature, box_feature), axis=-1)
+            layers = KL.Dense(1024)(layers)
+            feature = KL.Dense(768)(layers)
+        return feature
+
+    def build_query_feature(self):
+        with tf.variable_scope(None, "query_feature"):
+            layers = KL.Dense(2048)(self.input_query_vector)
+            layers = KL.Dense(1024)(layers)
+            layers = KL.Dense(1024)(layers)
+            query_feature = KL.Dense(768)(layers)
+        return query_feature
 
 
 if __name__ == '__main__':
