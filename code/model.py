@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*- 
 # @Time 2020/5/27 14:17
 # @Author wcy
+import time
+
 import numpy as np
 import tensorflow as tf
 import keras
@@ -83,7 +85,8 @@ class Model(Triplet):
             layers = KL.Conv1D(1024, 3, padding="same", activation=K.relu)(layers)
             layers = KL.Conv1D(768, 3, padding="same")(layers)
             layers = box_label_weight * layers
-            layers = [tf.reduce_mean(layers, axis=1, keepdims=True), tf.reduce_sum(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True)]
+            layers = [tf.reduce_mean(layers, axis=1, keepdims=True), tf.reduce_sum(layers, axis=1, keepdims=True),
+                      tf.reduce_max(layers, axis=1, keepdims=True), tf.reduce_max(layers, axis=1, keepdims=True)]
             layers = tf.concat(layers, axis=1)
             layers = tf.transpose(layers, perm=[0, 2, 1])
             filters_kernel_size = [[2, 5], [2, 3], [1, 5], [1, 3]]
@@ -144,4 +147,20 @@ class Model(Triplet):
 
 
 if __name__ == '__main__':
-    Model()
+    batch = 32
+    model = Model()
+    with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
+        while True:
+            box_num = np.random.randint(0, 10)
+            feed_dict = {
+                model.input_query_vector: np.random.random((batch, 768)),
+                model.input_feature_vector: np.random.random((batch, box_num, 2048)),
+                model.input_boxe_vector: np.random.random((batch, box_num, 3)),
+                model.input_label_vector: np.random.random((batch, box_num, 768)),
+                model.input_labels: np.random.randint(0, 10, (batch*2)),
+            }
+            s = time.time()
+            a = sess.run([model.all_triplet_loss, model.hard_triplet_loss], feed_dict=feed_dict)
+            e = time.time()
+            print(f"{e-s}", a)
