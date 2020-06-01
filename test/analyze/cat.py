@@ -39,6 +39,11 @@ def change_cv2_draw(image, labels_names, boxes, sizes=16, color=(255, 0, 0)):
 
 
 if __name__ == '__main__':
+    train_datas = pd.read_csv(valid_path, sep="\t", chunksize=10000)
+    for i in train_datas:
+        print()
+    train_datas = pd.read_csv(valid_path, sep="\t", chunksize=10000)
+    a = next(train_datas)
     # train_sampleset = read_tsv(train_sampleset_path)
 
     train_datas = pd.read_csv(train_path, sep="\t", iterator=True)

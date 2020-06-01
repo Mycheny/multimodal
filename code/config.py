@@ -18,13 +18,14 @@ USER_TMP_DATA_PATH = os.path.join(USER_DATA_PATH, 'tmp_data')
 BERT_PRE_MODEL_PATH = os.path.join(BASE_DIR, EXTERNAL_RESOURCE_PATH, 'bert_pre_model/multi_cased_L-12_H-768_A-12')
 
 # 数据路径
-if system=="Liunx":
+if system=="Linux":
     DATA_PATH = os.path.join(BASE_DIR, 'data')
     TRAIN_PATH = os.path.join(DATA_PATH, 'train', f"train.tsv")
     VALID_PATH = os.path.join(DATA_PATH, 'valid', f"valid.tsv")
     VALID_ANSWER_PATH = os.path.join(DATA_PATH, 'valid', f"valid_answer.json")
     TEST_A_PATH = os.path.join(DATA_PATH, 'testA', f"testA.tsv")
     TEST_B_PATH = os.path.join(DATA_PATH, 'testB', f"testB.tsv")
+    LABELS_NAMES_PATH = os.path.join(DATA_PATH, 'multimodal_labels.txt')
 else:
     DATA_PATH = "E:\\DATA\\multimodal"
     TRAIN_PATH = os.path.join(DATA_PATH, 'multimodal_train', "train.tsv")

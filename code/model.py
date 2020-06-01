@@ -34,16 +34,18 @@ class BatchNorm(KL.BatchNormalization):
 
 class Model(Triplet):
 
-    def __init__(self):
+    def __init__(self, max_boxes_num=10, lr=0.0005, global_step=0):
         super().__init__()
-        box_num = None
+        self.max_boxes_num = max_boxes_num
+        self.lr = lr
+        self.global_step = tf.Variable(global_step, trainable=False)
         self.margin = 0.5
         self.input_query_vector = tf.placeholder(tf.float32, (None, 768))  # shape (batch, 768)
 
-        self.input_feature_vector = tf.placeholder(tf.float32, (None, box_num, 2048))  # shape (batch, boxe_num, 2048)
-        self.input_boxe_vector = tf.placeholder(tf.float32,
-                                                (None, box_num, 3))  # shape (batch, boxe_num, (x, y, area_than)
-        self.input_label_vector = tf.placeholder(tf.float32, (None, box_num, 768))  # shape (batch, boxe_num, 768)
+        self.input_boxes_mask = tf.placeholder(tf.float32, (None, self.max_boxes_num))
+        self.input_feature_vector = tf.placeholder(tf.float32, (None, self.max_boxes_num, 2048))  # shape (batch, boxe_num, 2048)
+        self.input_boxe_vector = tf.placeholder(tf.float32, (None, self.max_boxes_num, 3))  # shape (batch, boxe_num, (x, y, area_than)
+        self.input_label_vector = tf.placeholder(tf.float32, (None, self.max_boxes_num, 768))  # shape (batch, boxe_num, 768)
 
         self.input_labels = tf.placeholder(tf.int32, (None))  # shape (batch*2)
         self.build()
@@ -52,8 +54,10 @@ class Model(Triplet):
         self.image_feature = self.build_image_feature()
         self.query_feature = self.build_query_feature()
         self.embeddings = tf.concat((self.query_feature, self.image_feature), axis=0)
-        self.all_triplet_loss = self.batch_all_triplet_loss(self.input_labels, self.embeddings, self.margin)
+        self.all_triplet_loss, _ = self.batch_all_triplet_loss(self.input_labels, self.embeddings, self.margin)
         self.hard_triplet_loss = self.batch_hard_triplet_loss(self.input_labels, self.embeddings, self.margin)
+        self.loss = (tf.where(tf.greater_equal(self.global_step, 3000), self.hard_triplet_loss, self.all_triplet_loss))
+        self.build_gradient_descent()
 
     def build_image_feature(self):
         with tf.variable_scope(None, "box_label_weight"):
@@ -74,8 +78,9 @@ class Model(Triplet):
         with tf.variable_scope(None, "box_feature"):
             filters_kernel_size = [[1024, 3], [2048, 3], [1024, 2], [2048, 2]]
             layers = []
+            inputs = tf.expand_dims(self.input_boxes_mask, axis=-1)*self.input_feature_vector
             for f, k in filters_kernel_size:
-                x = KL.Conv1D(f, k, padding="same")(self.input_feature_vector)
+                x = KL.Conv1D(f, k, padding="same")(inputs)
                 x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
                 x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
                 layers.append(x)
@@ -99,13 +104,14 @@ class Model(Triplet):
             layers = KL.Conv1D(3, 3, padding="same", activation=K.relu)(layers)
             layers = KL.Conv1D(1, 3, padding="same", activation=K.relu)(layers)
             layers = KL.Conv1D(1, 3, padding="same")(layers)
-            box_feature = tf.reshape(layers, (-1, 768))
+            self.box_feature = tf.reshape(layers, (-1, 768))
 
         with tf.variable_scope(None, "label_feature"):
             filters_kernel_size = [[1024, 3], [512, 3], [1024, 2], [512, 2]]
             layers = []
+            inputs = tf.expand_dims(self.input_boxes_mask, axis=-1) * self.input_label_vector
             for f, k in filters_kernel_size:
-                x = KL.Conv1D(f, k, padding="same")(self.input_label_vector)
+                x = KL.Conv1D(f, k, padding="same")(inputs)
                 x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
                 x = KL.Conv1D(f, k, padding="same", activation=K.relu)(x)
                 layers.append(x)
@@ -129,10 +135,10 @@ class Model(Triplet):
             layers = KL.Conv1D(3, 3, padding="same", activation=K.relu)(layers)
             layers = KL.Conv1D(1, 3, padding="same", activation=K.relu)(layers)
             layers = KL.Conv1D(1, 3, padding="same")(layers)
-            label_feature = tf.reshape(layers, (-1, 768))
+            self.label_feature = tf.reshape(layers, (-1, 768))
 
         with tf.variable_scope(None, "feature_merge"):
-            layers = tf.concat((label_feature, box_feature), axis=-1)
+            layers = tf.concat((self.label_feature, self.box_feature), axis=-1)
             layers = KL.Dense(1024)(layers)
             feature = KL.Dense(768)(layers)
         return feature
@@ -145,6 +151,32 @@ class Model(Triplet):
             query_feature = KL.Dense(768)(layers)
         return query_feature
 
+    def build_gradient_descent(self):
+        # 学习率连续衰减
+        starter_learning_rate = self.lr
+        end_learning_rate = 0.000005
+        decay_rate = 0.01
+        start_decay_step = 1500
+        decay_steps = 10000  #
+        learning_rate = (
+            tf.where(
+                tf.greater_equal(self.global_step, start_decay_step),  # if global_step >= start_decay_step
+                # 具体选择那个衰减函数，请查看decay.py绘制的曲线
+                tf.train.polynomial_decay(starter_learning_rate, self.global_step - start_decay_step, decay_steps,
+                                          end_learning_rate, power=1.0),
+                # tf.train.exponential_decay(starter_learning_rate, global_step - start_decay_step, decay_steps=decay_steps, decay_rate=decay_rate),
+                # tf.train.inverse_time_decay(starter_learning_rate, global_step - start_decay_step, decay_steps=decay_steps, decay_rate=decay_rate),
+                # tf.train.natural_exp_decay(starter_learning_rate, global_step - start_decay_step, decay_steps=decay_steps, decay_rate=decay_rate),
+                starter_learning_rate
+            )
+        )
+
+        with tf.variable_scope(None, "optimizer"):
+            optimizer = tf.train.AdamOptimizer(learning_rate, epsilon=1e-8)
+            self.train_op = optimizer.minimize(self.loss, self.global_step, colocate_gradients_with_ops=True)
+        self.merged_summary_op = tf.summary.merge_all()
+
+
 
 if __name__ == '__main__':
     batch = 32
@@ -152,9 +184,10 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
         while True:
-            box_num = np.random.randint(0, 10)
+            box_num = 10
             feed_dict = {
                 model.input_query_vector: np.random.random((batch, 768)),
+                model.input_boxes_mask: np.random.randint(0, 2, (batch, box_num)),
                 model.input_feature_vector: np.random.random((batch, box_num, 2048)),
                 model.input_boxe_vector: np.random.random((batch, box_num, 3)),
                 model.input_label_vector: np.random.random((batch, box_num, 768)),

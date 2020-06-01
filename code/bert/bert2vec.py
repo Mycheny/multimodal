@@ -116,6 +116,7 @@ class BertEncode(object):
         temp = np.zeros((1, self.max_seq_len), np.int)
         temp_feed_dict = {self.input_ids: temp, self.input_mask: temp, self.input_type_ids: temp}
         self.sess.run(self.output, feed_dict=temp_feed_dict)
+        tf.reset_default_graph()
 
     def deal_text(self, texts):
         input_ids = []
